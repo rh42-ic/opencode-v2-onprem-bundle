@@ -19,7 +19,7 @@ const argv1 = (name: string) => {
 const WORK = path.resolve(REPO_ROOT, argv1("--work") ?? "work")
 const PLATFORM = argv1("--platform") ?? "linux-x64"
 const FROM_SOURCE = argv.includes("--from-source")
-const SRC_REPO_ENV = process.env.OPENCODE_REPO // 本地检出可覆盖（CI 不设则用 URL）
+const SRC_REPO_ENV = process.env.OPENCODE_REPO // 本地检出可覆盖；CI 不设 → 默认 upstream URL
 const DL = path.resolve(REPO_ROOT, ".dl-cache")
 const log = (...a: unknown[]) => console.error("[build]", ...a)
 
@@ -64,15 +64,16 @@ async function download(url: string, dest: string) {
 
 // ── 1. 源码准备：仓库（URL 自动 clone）→ ref 解析 → worktree → patches ────────
 let REF = argv1("--ref")
+const REPO = SRC_REPO_ENV ?? "https://github.com/anomalyco/opencode"
 if (!REF) {
-  const tags = await sh(["git", "ls-remote", "--tags", "--refs", "--sort=-v:refname", SRC_REPO_ENV ?? "https://github.com/anomalyco/opencode", "v*"])
+  const tags = await sh(["git", "ls-remote", "--tags", "--refs", "--sort=-v:refname", REPO, "v*"])
   REF = tags.split("\n")[0]?.split("refs/tags/")[1]
   if (!REF) throw new Error("no v* tag found")
 }
-const repoDir = /^https?:/.test(SRC_REPO_ENV ?? "") ? null : SRC_REPO_ENV
+const repoDir = /^https?:/.test(REPO) ? null : REPO
 const srcRepo = repoDir ?? path.join(WORK, "opencode-src")
 if (!repoDir) {
-  if (!existsSync(srcRepo)) await sh(["git", "clone", "--filter=blob:none", "--no-checkout", SRC_REPO_ENV!, srcRepo])
+  if (!existsSync(srcRepo)) await sh(["git", "clone", "--filter=blob:none", "--no-checkout", REPO, srcRepo])
 }
 if (!(await sh(["git", "-C", srcRepo, "rev-parse", "--verify", "--quiet", `${REF}^{commit}`]).catch(() => ""))) {
   await sh(["git", "-C", srcRepo, "fetch", "origin", "--tags", "--prune", "--force"])
