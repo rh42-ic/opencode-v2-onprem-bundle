@@ -1,0 +1,13 @@
+{
+  "name": "opencode-v2-onprem-bundle",
+  "upstream": "https://github.com/anomalyco/opencode",
+  "patches": [],
+  "plugins": [
+    { "spec": "oh-my-opencode-slim", "description": "v2 兼容（verify 实测加载成功）" },
+    { "spec": "billion-context", "description": "上下文压缩（acp 的 v2 继任者）；实测 0.1.213+ 加载成功" },
+    { "spec": "superpowers@git+https://github.com/obra/superpowers.git#22f0b463e7a5e579904dd6211a520321035526f746f953aafb7ded7a8b", "git_ref": "v7.0.2", "description": "技能库；必须钉 commit SHA（tag 型 spec 是 mutable，离线机会在每次加载时走网络 update 而失败）；npm 0.0.2 为 v1 stub 不可用" }
+  ],
+  "plugins_unverified": [
+    { "name": "opencode-acp", "spec": "opencode-acp@stable", "note": "实测 1.18.1 在 2.2.7 与 2.3.0 上均加载失败（v1 形状）；v2 已由 billion-context 取代，不再纳入" }
+  ]
+}

@@ -1,0 +1,5 @@
+out/
+.dl-cache/
+work/
+work-win/
+*.tar.gz

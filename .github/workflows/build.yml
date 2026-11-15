@@ -1,0 +1,88 @@
+name: build-bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      opencode_ref:
+        description: "opencode tag/branch/commit (empty = latest v* tag)"
+        required: false
+        default: ""
+      platform:
+        description: "target platform"
+        required: false
+        default: "linux-x64"
+        type: choice
+        options:
+          - linux-x64
+          - win32-x64
+      skip_verify:
+        description: "skip offline verification"
+        required: false
+        default: false
+        type: boolean
+      build_from_source:
+        description: "build binary from source instead of official release (needed for non-tag refs)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve ref & install bun
+        id: prep
+        run: |
+          REF="${{ inputs.opencode_ref }}"
+          if [ -z "$REF" ]; then
+            REF="$(git ls-remote --tags --refs --sort='-v:refname' https://github.com/anomalyco/opencode 'v*' | head -1 | sed 's|.*refs/tags/||')"
+            [ -n "$REF" ] || { echo "no tag found" >&2; exit 1; }
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          REQUIRED="$(curl -fsSL "https://raw.githubusercontent.com/anomalyco/opencode/$REF/package.json" | grep -oP '"packageManager": *"bun@\K[^"]*')"
+          echo "bun=$REQUIRED" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF bun=$REQUIRED"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.prep.outputs.bun }}
+
+      - name: Build bundle (official binary default, source fallback)
+        run: |
+          ARGS=""
+          if [ "${{ inputs.build_from_source }}" = "true" ]; then ARGS="$ARGS --from-source"; fi
+          bun run scripts/build.ts --ref "${{ steps.prep.outputs.ref }}" --platform "${{ inputs.platform }}" $ARGS
+
+      - name: Verify offline
+        if: ${{ inputs.skip_verify != true }}
+        run: |
+          source work/build.env
+          ./scripts/verify.sh "$TARBALL"
+
+      - name: Create release
+        run: |
+          source work/build.env
+          cat > release-notes.md <<EOF
+            opencode upstream ref: \`${{ steps.prep.outputs.ref }}\`
+            upstream commit: \`${COMMIT}\`
+            platform: \`${{ inputs.platform }}\`
+            binary source: ${{ inputs.build_from_source == true && 'built from source' || 'official opencode release (SHA256SUMS-verified)' }}
+            安装与离线行为说明见 bundle 内 README.md / MANIFEST.json
+            验收：verify.sh 16 项断言（模拟内网级别1：死外网 + 全新 HOME）；linux-x64 全量验证；win32-x64 未在本管线运行验证（unverified）
+          EOF
+          echo "version=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "bundle-v${{ env.version }}"
+          name: "opencode v${{ env.version }} onprem bundle"
+          body_path: release-notes.md
+          files: |
+            out/opencode-v${{ env.version }}-onprem-bundle-${{ inputs.platform }}.tar.gz
+            out/*.sha256

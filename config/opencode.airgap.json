@@ -1,0 +1,31 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "update": "disable",
+  "models": { "fetch": false },
+  "disabled_providers": ["opencode", "opencode-go"],
+
+  // ── 本地 LLM 配置（用户自填）──────────────────────────────────────────────
+  // LiteLLM 网关（OpenAI 兼容）：provider id 随意，model 填网关侧的 model id。
+  // 注意 "npm" 字段必须保留：它指向编译进二进制的内置 provider 包（零 npm 依赖）。
+  //
+  // "provider": {
+  //   "litellm": {
+  //     "name": "LiteLLM",
+  //     "npm": "@opencode/ai/providers/openai-compatible",
+  //     "options": {
+  //       "baseURL": "http://<内网网关地址>/v1",
+  //       "apiKey": "<网关 key，无鉴权可填任意非空串>"
+  //     },
+  //     "models": {
+  //       "<model-id>": { "name": "<显示名>" }
+  //     }
+  //   }
+  // },
+  // "model": "litellm/<model-id>",
+  //
+  // Ollama（127.0.0.1:11434）/ vLLM（127.0.0.1:8000）无需配置，自动发现。
+  //
+  // ── 插件（build 时注入 vendored 清单；--config 原样拷贝）──────────────────
+  // 键写法：裸名 = @latest；git 源用完整 spec（SHA 钉定零网络）。
+  "plugins": [/*__PLUGINS__*/],
+}
