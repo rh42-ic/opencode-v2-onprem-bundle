@@ -59,4 +59,4 @@ gh workflow run build.yml -f opencode_ref=vX.Y.Z -f platform=win32-x64
 ```
 
 管线设计与决策记录：`doc/design.md`；opencode 离线行为源码证据：`doc/analysis.md`。
-核心方针：**源码 patch 是最后手段**——离线化全部通过配置 + 环境变量 + 资产种子实现。
+核心方针：**零源码 patch**——离线化全部通过配置 + 环境变量 + 资产种子实现。

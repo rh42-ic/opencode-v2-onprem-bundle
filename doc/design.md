@@ -12,7 +12,7 @@
 ## 2. 核心方针
 
 1. **源码 patch 是不得已的最后手段**（用户方针）。离线化全部通过 配置 + 环境变量 + 资产种子 实现。
-   当前结论：**零 patch**。`patches/` 保留为应急机制，任何 patch 必须在 MANIFEST 记录理由，且 verify 需做有/无 patch 对照测试。
+   当前结论：**零 patch**。不设 patches 机制；确需 patch 时先在本文提案（MANIFEST 记理由 + verify 有/无对照测试）再引入。
 2. **版本真相从源码提取，不硬编码**：rg 版本号（`ripgrep/binary.ts` 的 VERSION）、tree-sitter URL 列表
    （`parsers-config.ts`，构建期用 bun import 提取）、bun 版本（源码 `packageManager`）、opencode 版本
    （`packages/cli/package.json`）。upstream 升级后脚本自动跟随。
@@ -31,7 +31,7 @@
 ```
 bun run scripts/build.ts [--ref <tag|branch|sha>] [--platform linux-x64|win32-x64] [--from-source] [--work <dir>]
   1. resolve-ref      无参 = 最新 v* tag（git ls-remote；OPENCODE_REPO 可覆盖为本机检出）
-  2. source           git worktree add --detach <work>/src <ref>；patches/*.patch 按文件名序 apply（当前空）
+  2. source           git worktree add --detach <work>/src <ref>
   3. binary           默认官方 release（ref 为 tag 才可；SHA256SUMS 核对）；--from-source 或非 tag ref → 源码构建
                       （源码路径：bun install 校验版本与 packageManager 一致 → bun run script/build.ts 平台目标）
   4. assets           rg / tree-sitter / npm 插件 → <work>/assets/（§6）
@@ -55,7 +55,7 @@ opencode-<ver>-onprem/
 ├── config/opencode.airgap.json           # 内网配置模板
 ├── install.sh                            # 目标机安装脚本（自包含，仅做拷贝）
 ├── env.sh                                # 随包静态环境文件（所有用户 source 同一份）：PATH 自定位 + 离线开关
-└── MANIFEST.json                         # 源 commit、版本、bun、patch 清单、资产计数、sha256
+└── MANIFEST.json                         # 源 commit、版本、bun、资产清单、sha256
 ```
 
 ## 6. 资产提取与下载（build.ts 内联）
@@ -129,7 +129,7 @@ per-user 种子由 install.sh 主动铺设 + README 说明；多用户机管理�
   冷 FS 下插件激活需 provider 就绪轮询。
 - 已知限制：tar.gz 因 MANIFEST `built_at` 与文件 mtime 不做字节级可复现（内容等价；如需可加确定性打包选项）。
 - 维护手册（upstream 同步）：新 tag → `gh workflow run build.yml -f opencode_ref=vX.Y.Z`（默认官方件；需要 patch 时加 `-f build_from_source=true`，非 tag ref 亦然）→ 若 build/verify 因 upstream 行为变化失败，
-  按 analysis.md 定位 → 优先找新的 config/env/种子解法 → 确无解才进 patches/（记录理由 + 对照测试）→ Release。
+  按 analysis.md 定位 → 优先找新的 config/env/种子解法 → 确无解时先在本文提案、再考虑引入 patch 机制 → Release。
 
 **版本漂移风险点**（维护时重点核对）：`parsers-config.ts` URL/结构变化（提取器与 hash 命名）；
 `npm.ts` 缓存键/GC 语义变化；`ripgrep/binary.ts` 解析顺序或版本常量变化；`provider.ts` builtins 表

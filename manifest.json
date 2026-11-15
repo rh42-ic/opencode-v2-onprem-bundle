@@ -1,7 +1,6 @@
 {
   "name": "opencode-v2-onprem-bundle",
   "upstream": "https://github.com/anomalyco/opencode",
-  "patches": [],
   "plugins": [
     { "spec": "oh-my-opencode-slim", "description": "v2 兼容（verify 实测加载成功）" },
     { "spec": "billion-context", "description": "上下文压缩（acp 的 v2 继任者）；实测 0.1.213+ 加载成功" },

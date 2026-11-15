@@ -62,7 +62,7 @@ async function download(url: string, dest: string) {
   }
 }
 
-// ── 1. 源码准备：仓库（URL 自动 clone）→ ref 解析 → worktree → patches ────────
+// ── 1. 源码准备：仓库（URL 自动 clone）→ ref 解析 → worktree ─────────────────
 let REF = argv1("--ref")
 const REPO = SRC_REPO_ENV ?? "https://github.com/anomalyco/opencode"
 if (!REF) {
@@ -89,14 +89,6 @@ await sh(["git", "-C", srcRepo, "worktree", "remove", "--force", SRC]).catch(() 
 await sh(["git", "-C", srcRepo, "worktree", "prune"])
 await sh(["git", "-C", srcRepo, "worktree", "add", "--detach", SRC, COMMIT])
 
-const patchDir = path.join(REPO_ROOT, "patches")
-const patches = [...new Bun.Glob("[0-9][0-9][0-9]-*.patch").scanSync({ cwd: patchDir })].sort()
-for (const p of patches) {
-  log(`apply patch ${p}`)
-  await sh(["git", "-C", SRC, "apply", "--check", path.join(patchDir, p)])
-  await sh(["git", "-C", SRC, "apply", path.join(patchDir, p)])
-}
-if (patches.length) log(`WARN: ${patches.length} patch(es) applied（零 patch 方针例外，见 design.md）`)
 
 // ── 2. 二进制：官方 release（默认）或源码构建 ────────────────────────────────
 const IS_TAG = REF === `v${VERSION}`
@@ -352,7 +344,6 @@ await sh(["chmod", "755", path.join(BUNDLE, "install.sh")])
 const bundleManifest = {
   name: manifest.name,
   upstream: manifest.upstream,
-  patches: patches,
   plugins: manifest.plugins ?? [],
   plugins_unverified: manifest.plugins_unverified ?? [],
   ref: REF,
