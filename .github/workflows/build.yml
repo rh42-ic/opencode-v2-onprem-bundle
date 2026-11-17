@@ -64,17 +64,27 @@ jobs:
           source work/build.env
           ./scripts/verify.sh "$TARBALL"
 
-      - name: Create release
+      - name: Prepare release notes
         run: |
           source work/build.env
           cp work/release-notes.md release-notes.md
           echo "version=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Publish release
+      # release 说明以 linux 版为主：linux 轮写入/刷新 body，其他平台轮只上传资产（不改 body/标题）
+      - name: Publish release (linux body)
+        if: ${{ inputs.platform == 'linux-x64' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "bundle-v${{ env.version }}"
           name: "opencode v${{ env.version }} onprem bundle"
           body_path: release-notes.md
+          files: |
+            out/opencode-v${{ env.version }}-onprem-bundle-${{ inputs.platform }}.*
+
+      - name: Publish release (assets only)
+        if: ${{ inputs.platform != 'linux-x64' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "bundle-v${{ env.version }}"
           files: |
             out/opencode-v${{ env.version }}-onprem-bundle-${{ inputs.platform }}.*

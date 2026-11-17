@@ -540,6 +540,7 @@ const releaseNotes = [
   "```",
 ]
 if (PLATFORM !== "linux-x64") releaseNotes.push("", "win32-x64 未在本管线运行验证（unverified）。")
+else releaseNotes.push("", "其他平台：`win32-x64` 版本以 `.zip` 发布（未在本管线运行验证，unverified）。")
 writeFileSync(path.join(WORK, "release-notes.md"), releaseNotes.join("\n") + "\n")
 
 const OUT_DIR = path.join(REPO_ROOT, "out")

@@ -130,7 +130,7 @@ sudo ./install.sh [--prefix /opt/opencode]     # 管理员侧，默认 /opt/open
 - workflow：`.github/workflows/build.yml`，`workflow_dispatch`（inputs: `opencode_ref`、`platform`、`skip_verify`、`build_from_source`）；steps = checkout → bun 环境对应源码 packageManager → `bun run scripts/build.ts` → `scripts/verify.sh`（`--skip-verify` 可跳）→ Release（tag `bundle-v<ver>`，notes = 包内文件列表 + 主要程序版本）。
 - **脚本极简终态（m01362）**：scripts/ 仅 build.ts（唯一管线入口）+ install.sh + verify.sh；tests/ 仅 mock-llm.py + mock-ollama.py。
 - runner 自带外网（资产下载无需任何出口预设）；verify 用死端口断网仿真。
-- Release：tag 名 `bundle-v<opencode版本>`，附件 = 平台归档（linux `.tar.gz` / win `.zip`，Windows 解压友好）+ `.sha256`；release notes 由 build.ts 生成（`work/release-notes.md`）= 包内文件列表 + 主要程序版本（opencode/rg/bun/插件/tree-sitter）。
+- Release：tag 名 `bundle-v<opencode版本>`，附件 = 平台归档（linux `.tar.gz` / win `.zip`，Windows 解压友好）+ `.sha256`；release notes 由 build.ts 生成（`work/release-notes.md`）= 包内文件列表 + 主要程序版本（opencode/rg/bun/插件/tree-sitter）；**body 以 linux 版为主**：linux 轮写入/刷新 body，其他平台轮只上传资产。
 - **首次 CI 绿灯实证（run 43585634372）**：ubuntu runner 全流程（worktree 检出 dev → 构建 → 资产 → 打包 → 离线验收）通过并发布 `bundle-v2.3.0`。
   踩坑记录：workflow 注册需 boolean input 用布尔默认值；runner 预设 XDG_* 必须全程 unset（否则 opencode 读错 config 目录，config provider 永不注册）；
   冷 FS 下插件激活需 provider 就绪轮询。
