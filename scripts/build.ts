@@ -7,8 +7,9 @@
  * 网络语义：本脚本按需访问网络（下载/克隆/npm），不做任何出口环境预设 —— 出口属运行环境。
  */
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
+import { deflateRawSync } from "node:zlib"
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
@@ -41,6 +42,83 @@ async function sh(cmd: string[], opts: { cwd?: string; env?: Record<string, stri
 const mkdtemp = async () => (await sh(["mktemp", "-d"])).trim()
 const sha256File = async (file: string) =>
   createHash("sha256").update(new Uint8Array(await Bun.file(file).arrayBuffer())).digest("hex")
+
+// 最小 ZIP 写入器（deflate，固定时间戳 → 可复现）—— Windows 资源管理器可直接解压。
+// 不依赖 zip/7z 命令，任何构建机可用。
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    t[n] = c >>> 0
+  }
+  return t
+})()
+function crc32(buf: Uint8Array) {
+  let c = 0xffffffff
+  for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
+function zipDir(root: string, top: string, out: string) {
+  const files: { name: string; data: Buffer; exec: boolean }[] = []
+  const walk = (rel: string) => {
+    for (const d of readdirSync(path.join(root, rel), { withFileTypes: true })) {
+      const r = rel ? `${rel}/${d.name}` : d.name
+      if (d.isDirectory()) walk(r)
+      else if (d.isFile()) {
+        const full = path.join(root, r)
+        files.push({ name: r, data: readFileSync(full), exec: (statSync(full).mode & 0o111) !== 0 })
+      }
+    }
+  }
+  walk(top)
+  const chunks: Buffer[] = []
+  const central: Buffer[] = []
+  let offset = 0
+  for (const f of files) {
+    const nameBuf = Buffer.from(f.name)
+    const data = deflateRawSync(f.data)
+    const crc = crc32(f.data)
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0)
+    local.writeUInt16LE(20, 4) // version needed
+    local.writeUInt16LE(0x0800, 6) // UTF-8 names
+    local.writeUInt16LE(8, 8) // deflate
+    local.writeUInt16LE(0, 10) // time
+    local.writeUInt16LE(0x0021, 12) // date = 1980-01-01（确定性）
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(data.length, 18)
+    local.writeUInt32LE(f.data.length, 22)
+    local.writeUInt16LE(nameBuf.length, 26)
+    local.writeUInt16LE(0, 28)
+    chunks.push(local, nameBuf, data)
+
+    const cen = Buffer.alloc(46)
+    cen.writeUInt32LE(0x02014b50, 0)
+    cen.writeUInt16LE(0x031e, 4) // made by: unix
+    cen.writeUInt16LE(20, 6)
+    cen.writeUInt16LE(0x0800, 8)
+    cen.writeUInt16LE(8, 10)
+    cen.writeUInt16LE(0, 12)
+    cen.writeUInt16LE(0x0021, 14)
+    cen.writeUInt32LE(crc, 16)
+    cen.writeUInt32LE(data.length, 20)
+    cen.writeUInt32LE(f.data.length, 24)
+    cen.writeUInt16LE(nameBuf.length, 28)
+    cen.writeUInt32LE(((f.exec ? 0o100755 : 0o100644) << 16) >>> 0, 38)
+    cen.writeUInt32LE(offset, 42)
+    central.push(cen, nameBuf)
+    offset += local.length + nameBuf.length + data.length
+  }
+  const cd = Buffer.concat(central)
+  const eocd = Buffer.alloc(22)
+  eocd.writeUInt32LE(0x06054b50, 0)
+  eocd.writeUInt16LE(files.length, 8)
+  eocd.writeUInt16LE(files.length, 10)
+  eocd.writeUInt32LE(cd.length, 12)
+  eocd.writeUInt32LE(offset, 16)
+  writeFileSync(out, Buffer.concat([...chunks, cd, eocd]))
+}
 async function findFile(dir: string, name: string) {
   for await (const rel of new Bun.Glob(`**/${name}`).scan({ cwd: dir, onlyFiles: true })) return path.join(dir, rel)
 }
@@ -303,8 +381,64 @@ for (const p of manifest.plugins ?? []) {
   rmSync(tmp, { recursive: true, force: true })
   log(`npm ok: ${key} @ ${version}`)
 }
+
+// 3d. 配置 JSON schema —— 独立 schema/ 目录；递归抓取外部 $ref 并本地化（$id 同步改本地文件名，
+//    否则相对 $ref 会按远程 base URI 解析）
+const schemaDir = path.join(ASSETS, "schema")
+mkdirSync(schemaDir, { recursive: true })
+const SCHEMA_ENTRY = "https://opencode.ai/config.json"
+const schemaSeen = new Map<string, string>() // 远程 base URL -> 本地文件名
+const schemaQueue: string[] = []
+const schemaSlug = (url: string) => {
+  const s = url.replace(/^https?:\/\//, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "")
+  return s.endsWith(".json") ? s : `${s}.json`
+}
+const schemaEnsure = (url: string) => {
+  if (!schemaSeen.has(url)) {
+    schemaSeen.set(url, schemaSeen.size === 0 ? "config.json" : schemaSlug(url))
+    schemaQueue.push(url)
+  }
+  return schemaSeen.get(url)!
+}
+schemaEnsure(SCHEMA_ENTRY)
+while (schemaQueue.length) {
+  const url = schemaQueue.shift()!
+  const file = schemaSeen.get(url)!
+  const dest = path.join(schemaDir, file)
+  await download(url, dest)
+  const doc = await Bun.file(dest).json()
+  const rewrite = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(rewrite)
+    if (!node || typeof node !== "object") return
+    const obj = node as Record<string, unknown>
+    if (typeof obj.$ref === "string") {
+      const hash = obj.$ref.indexOf("#")
+      const base = hash > -1 ? obj.$ref.slice(0, hash) : obj.$ref
+      const frag = hash > -1 ? obj.$ref.slice(hash) : ""
+      if (/^https?:/.test(base)) obj.$ref = schemaEnsure(base) + frag
+    }
+    for (const v of Object.values(obj)) rewrite(v)
+  }
+  rewrite(doc)
+  if (typeof doc.$id === "string" && /^https?:/.test(doc.$id)) doc.$id = file
+  await Bun.write(dest, JSON.stringify(doc, null, 2) + "\n")
+  log(`config schema: ${url} -> schema/${file}`)
+}
+// omo-slim 插件配置 schema（包内自带，无外部 $ref）：随 schema/ 一起供编辑器本地校验
+const slim = npmResults.find((r) => r.name === "oh-my-opencode-slim")
+const slimSchema = slim ? path.join(ASSETS, "npm", slim.key, "node_modules", "oh-my-opencode-slim", "oh-my-opencode-slim.schema.json") : ""
+const hasSlimSchema = slimSchema ? await Bun.file(slimSchema).exists() : false
+if (slim && hasSlimSchema) {
+  await sh(["cp", slimSchema, path.join(schemaDir, "oh-my-opencode-slim.json")])
+  log("config schema: oh-my-opencode-slim -> schema/oh-my-opencode-slim.json")
+}
+const schemaFiles = [...schemaSeen.entries()].map(([url, file]) => ({ url, file, sha256: "" }))
+if (slim && hasSlimSchema) schemaFiles.push({ url: `npm:oh-my-opencode-slim@${slim.version}`, file: "oh-my-opencode-slim.json", sha256: "" })
+for (const f of schemaFiles) f.sha256 = await sha256File(path.join(schemaDir, f.file))
+
 const assetsJson = {
   ripgrep_version: RG_VERSION,
+  schema: { entry: "schema/config.json", files: schemaFiles },
   tree_sitter: { filetypes: parsers.length, wasm: jobs.filter((j) => j.dest.endsWith(".wasm")).length, queries: jobs.filter((j) => j.dest.endsWith(".scm")).length },
   npm: npmResults,
 }
@@ -337,6 +471,7 @@ const inject = (manifest.plugins ?? []).map((p: { spec: string }) => JSON.string
 if (!tpl.includes("/*__PLUGINS__*/")) throw new Error("config template missing /*__PLUGINS__*/ placeholder")
 writeFileSync(path.join(BUNDLE, "config/opencode.airgap.json"), tpl.replace("/*__PLUGINS__*/", inject))
 await sh(["cp", path.join(REPO_ROOT, "config/target-readme.md"), path.join(BUNDLE, "README.md")])
+await sh(["cp", "-a", schemaDir, path.join(BUNDLE, "schema")])
 await sh(["cp", path.join(REPO_ROOT, "config/env.sh"), path.join(BUNDLE, "env.sh")])
 await sh(["cp", path.join(REPO_ROOT, "scripts/install.sh"), path.join(BUNDLE, "install.sh")])
 await sh(["chmod", "755", path.join(BUNDLE, "install.sh")])
@@ -361,15 +496,18 @@ await Bun.write(path.join(BUNDLE, "MANIFEST.json"), JSON.stringify(bundleManifes
 
 const OUT_DIR = path.join(REPO_ROOT, "out")
 mkdirSync(OUT_DIR, { recursive: true })
-const TARBALL = path.join(OUT_DIR, `opencode-v${VERSION}-onprem-bundle-${PLATFORM}.tar.gz`)
-rmSync(TARBALL, { force: true })
-await sh(["tar", "-czf", TARBALL, "-C", path.join(WORK, "bundle"), NAME])
-await Bun.write(`${TARBALL}.sha256`, `${await sha256File(TARBALL)}  ${path.basename(TARBALL)}\n`)
+// win32-x64 用 zip（Windows 解压 tar.gz 困难）；linux-x64 用 tar.gz
+const EXT = PLATFORM === "win32-x64" ? "zip" : "tar.gz"
+const ARCHIVE = path.join(OUT_DIR, `opencode-v${VERSION}-onprem-bundle-${PLATFORM}.${EXT}`)
+rmSync(ARCHIVE, { force: true })
+if (EXT === "zip") zipDir(path.join(WORK, "bundle"), NAME, ARCHIVE)
+else await sh(["tar", "-czf", ARCHIVE, "-C", path.join(WORK, "bundle"), NAME])
+await Bun.write(`${ARCHIVE}.sha256`, `${await sha256File(ARCHIVE)}  ${path.basename(ARCHIVE)}\n`)
 
 writeFileSync(
   path.join(WORK, "build.env"),
-  `REF=${REF}\nCOMMIT=${COMMIT}\nVERSION=${VERSION}\nPLATFORM=${PLATFORM}\nBINARY_SOURCE=${BINARY_SOURCE}\nTARBALL=${TARBALL}\n`,
+  `REF=${REF}\nCOMMIT=${COMMIT}\nVERSION=${VERSION}\nPLATFORM=${PLATFORM}\nBINARY_SOURCE=${BINARY_SOURCE}\nTARBALL=${ARCHIVE}\n`,
 )
 log(`bundle: ${BUNDLE}`)
-log(`tarball: ${TARBALL} (${((await Bun.file(TARBALL).stat()).size / 1e6).toFixed(0)}MB)`)
-console.log(`TARBALL=${TARBALL}`)
+log(`archive: ${ARCHIVE} (${((await Bun.file(ARCHIVE).stat()).size / 1e6).toFixed(0)}MB)`)
+console.log(`TARBALL=${ARCHIVE}`)

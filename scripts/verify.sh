@@ -21,6 +21,18 @@ VERIFY_OK=0
 trap 'kill ${MOCK_PID:-} ${OLLAMA_PID:-} 2>/dev/null || true; sleep 1; [ "$VERIFY_OK" = 1 ] && rm -rf "$TMP" 2>/dev/null || true' EXIT
 
 if [ -f "$BUNDLE" ]; then
+  case "$BUNDLE" in
+    *.zip)
+      # win32-x64 zip：本机不可运行 → 完整性检查后 SKIP（发布标注 unverified）
+      if command -v unzip >/dev/null 2>&1 && ! unzip -tq "$BUNDLE" >/dev/null 2>&1; then
+        echo "[verify] FAIL: zip 完整性检查失败"
+        exit 1
+      fi
+      echo "[verify] SKIP: win32-x64 zip（完整性检查通过；本机不可运行，发布标注 unverified）"
+      VERIFY_OK=1
+      exit 0
+      ;;
+  esac
   tar -xzf "$BUNDLE" -C "$TMP"
   BUNDLE_DIR="$(echo "$TMP"/opencode-*-onprem*)"
 else
@@ -60,6 +72,52 @@ for ACT in --seed --config; do
   env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME HOME="$HOME_DIR" \
     bash "$TMP/opt/install.sh" $ACT
 done
+
+# ── A0: --config 迁移演练（v1 形态 → v2；不覆盖用户设置）──────────────────────
+MIG_DIR="$HOME_DIR/.config/opencode"
+mkdir -p "$MIG_DIR"
+cat > "$MIG_DIR/opencode.jsonc" <<'EOF'
+{
+  // v1 形态（迁移演练用）
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["oh-my-opencode-slim", "opencode-acp@1.18.1"],
+  "obsolete_key": { "x": 1 },
+  "model": "keep/provider-model",
+}
+EOF
+cat > "$MIG_DIR/oh-my-opencode-slim.json" <<'EOF'
+{
+  "$schema": "https://unpkg.com/oh-my-opencode-slim@latest/oh-my-opencode-slim.schema.json",
+  "preset": "openai"
+}
+EOF
+env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME HOME="$HOME_DIR" \
+  bash "$TMP/opt/install.sh" --config >/dev/null
+if ! command -v jq >/dev/null 2>&1; then
+  fail "A0 jq 缺失，--config 迁移不可验证"
+else
+  jq -e '(.plugins | index("oh-my-opencode-slim")) and (.plugins | index("billion-context")) and ((.plugins | index("opencode-acp@1.18.1")) | not)' \
+    "$MIG_DIR/opencode.jsonc" >/dev/null 2>&1 \
+    && pass "A0 插件迁移（plugin→plugins，acp→billion-context）" || fail "A0 插件迁移失败"
+  jq -e '(has("plugin") | not) and (has("obsolete_key") | not) and (.["$schema"] == "./schema/config.json") and (.model == "keep/provider-model")' \
+    "$MIG_DIR/opencode.jsonc" >/dev/null 2>&1 \
+    && pass "A0 失效键清理 + \$schema 本地化 + 用户项保留" || fail "A0 键迁移失败"
+  ls "$MIG_DIR"/opencode.jsonc.bak.* >/dev/null 2>&1 && pass "A0 原配置已备份" || fail "A0 缺少迁移备份"
+  jq -e '.["$schema"] == "./schema/oh-my-opencode-slim.json" and .preset == "openai"' "$MIG_DIR/oh-my-opencode-slim.json" >/dev/null 2>&1 \
+    && pass "A0 omo-slim \$schema 本地化（用户项保留）" || fail "A0 omo-slim 迁移失败"
+fi
+
+# ── A9: 配置 schema 独立目录 + 外部引用递归本地化 + omo-slim schema ─────────────
+[ -f "$TMP/opt/schema/config.json" ] && pass "A9 bundle 含配置 schema 目录（schema/config.json）" || fail "A9 bundle 缺 schema/config.json"
+grep -q '"./schema/config.json"' "$TMP/opt/config/opencode.airgap.json" 2>/dev/null \
+  && pass "A9 模板 \$schema 指向本地" || fail "A9 模板仍指向远程 schema"
+jq -e '[.. | objects | .["$ref"]? | strings | select(test("^https?://"))] | length == 0' "$TMP/opt/schema/config.json" >/dev/null 2>&1 \
+  && pass "A9 schema 无残留远程 \$ref（已递归本地化）" || fail "A9 schema 仍含远程 \$ref"
+jq -e '[.. | objects | .["$ref"]? | strings | select(startswith("models.dev-model-schema.json#"))] | length > 0' "$TMP/opt/schema/config.json" >/dev/null 2>&1 \
+  && pass "A9 外部引用改写为本地文件" || fail "A9 外部引用未本地化"
+[ -f "$TMP/opt/schema/models.dev-model-schema.json" ] && pass "A9 models.dev schema 已随包" || fail "A9 缺 models.dev-model-schema.json"
+[ -f "$TMP/opt/schema/oh-my-opencode-slim.json" ] && pass "A9 omo-slim schema 已随包" || fail "A9 缺 oh-my-opencode-slim.json"
+[ -f "$HOME_DIR/.config/opencode/schema/config.json" ] && pass "A9 用户 schema 目录已就位" || fail "A9 用户 schema 目录缺失"
 
 # ── 测试环境：fresh HOME + env.sh + 死外网 + LiteLLM 式 provider 配置 ─────────
 export HOME="$HOME_DIR"
@@ -127,6 +185,7 @@ echo "$OUT" | grep -q "Tool ran and printed: hello-from-local-tool" && pass "A3 
 # A4: rg 本地命中 + 无 GitHub 下载尝试
 command -v rg >/dev/null || fail "A4 rg 不在 PATH"
 rg --version >/dev/null 2>&1 && pass "A4 rg 可用" || fail "A4 rg 不可执行"
+[ ! -e "$HOME/.cache/opencode/bin/rg" ] && pass "A4 rg 未复制到用户缓存（仅 PREFIX/bin）" || fail "A4 rg 被多余复制到用户缓存"
 if [ -d "$LOG_DIR" ] && grep -rq "github.com/BurntSushi" "$LOG_DIR" 2>/dev/null; then
   fail "A4 日志出现 ripgrep GitHub 下载尝试"
 else

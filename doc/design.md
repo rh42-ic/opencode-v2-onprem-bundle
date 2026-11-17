@@ -34,9 +34,10 @@ bun run scripts/build.ts [--ref <tag|branch|sha>] [--platform linux-x64|win32-x6
   2. source           git worktree add --detach <work>/src <ref>
   3. binary           默认官方 release（ref 为 tag 才可；SHA256SUMS 核对）；--from-source 或非 tag ref → 源码构建
                       （源码路径：bun install 校验版本与 packageManager 一致 → bun run script/build.ts 平台目标）
-  4. assets           rg / tree-sitter / npm 插件 → <work>/assets/（§6）
+  4. assets           rg / tree-sitter / npm 插件 → <work>/assets/；配置 schema → assets/schema/（§6）
   5. pack             bundle 目录 + config 模板注入 plugins + MANIFEST.json（§5）
-  产物                out/opencode-v<ver>-onprem-bundle-<platform>.tar.gz + .sha256 + <work>/build.env
+  产物                linux: out/opencode-v<ver>-onprem-bundle-<platform>.tar.gz；win: 同名 .zip（自包含写入器，固定时间戳）
+                      + .sha256 + <work>/build.env
                       verify 由 CI 或维护者单独跑：scripts/verify.sh（§8）
 ```
 
@@ -53,6 +54,10 @@ opencode-<ver>-onprem/
 │   ├── tree-sitter/queries/<ft>-<hash>.scm  # 91 URL 全量，hash 复现 opentui hashUrl
 │   └── npm/<pkg>@<spec>/node_modules/... # vendored 插件/格式化器完整依赖树
 ├── config/opencode.airgap.json           # 内网配置模板
+├── schema/                               # JSON schema 独立目录（外部 $ref 递归本地化）
+│   ├── config.json                       # opencode 配置 schema（$id 已改本地文件名）
+│   ├── models.dev-model-schema.json      # config schema 外部引用（models.dev 模型定义）
+│   └── oh-my-opencode-slim.json          # omo-slim 插件配置 schema（包内自带）
 ├── install.sh                            # 目标机安装脚本（自包含，仅做拷贝）
 ├── env.sh                                # 随包静态环境文件（所有用户 source 同一份）：PATH 自定位 + 离线开关
 └── MANIFEST.json                         # 源 commit、版本、bun、资产清单、sha256
@@ -65,6 +70,7 @@ opencode-<ver>-onprem/
 | rg | `packages/core/src/ripgrep/binary.ts` 的 VERSION + 平台表（linux=x64-linux / win=x64-win32） | GitHub release（musl x64 / msvc zip，sha256 与源码常量核对） | `bin/rg(.exe)` |
 | tree-sitter | bun import `packages/tui/src/parsers-config.ts` | 全部 wasm + queries URL（遵循出口环境变量，.dl-cache 幂等） | `assets/tree-sitter/{languages,queries}/`（命名规则见 analysis §9） |
 | npm 插件 | manifest `plugins[]`（spec/git_ref/description） | registry：临时项目 npm install → 抽取 node_modules 子树；git：clone（SHA 钉定零网络）→ 就地装包内依赖 | `assets/npm/<key>/node_modules/<真实包名>/`（键规则见下） |
+| 配置 schema | `https://opencode.ai/config.json`（v2 发布形态，兼容 v1 键） | 每次构建现取；递归爬取外部 `$ref`（当前仅 `models.dev/model-schema.json`）并改写为本地文件名（`$id` 同步改本地，否则相对 `$ref` 按远程 base URI 解析）；omo-slim 包内 schema 一并拷入 | `schema/config.json` + 外部引用文件 + `schema/oh-my-opencode-slim.json`；模板 `"$schema": "./schema/config.json"` |
 
 npm 种子键规则（复现 `npm.ts:84`）：config 写 `pkg` → 键 `<pkg>@latest`；写 `pkg@stable` → 键 `<pkg>@stable`。
 **README 与 install.sh 输出的"准确 config 写法"必须与种子键一致**，否则运行时不命中缓存。
@@ -89,14 +95,18 @@ sudo ./install.sh [--prefix /opt/opencode]     # 管理员侧，默认 /opt/open
 ├── bin/rg                                      # rg（用户把 env.sh source 后，rg 经 PATH 命中）
 ├── assets/...                                  # 种子源（per-user 复制用）
 ├── env.sh                                      # 随包静态文件原样拷贝：PATH 自定位 + 三个离线开关；网络配置用户自填
-└── config/opencode.airgap.json                 # 模板
+├── config/opencode.airgap.json                 # 配置模板
+└── schema/                                     # JSON schema 目录（config + 外部引用 + omo-slim）
 
 用户侧（source env.sh 后）：
   install.sh --seed                             # 铺 per-user 缓存（幂等）：
-                                                #   ~/.cache/opencode/bin/rg
                                                 #   ${XDG_DATA_HOME:-~/.local/share}/opentui/tree-sitter/{languages,queries}/
                                                 #   ~/.cache/opencode/npm/<key>/<now_ms>/node_modules（全部 vendored 插件原样拷贝，键=npm.ts 规则）
-  install.sh --config                           # 模板 → ~/.config/opencode/（已有则跳过）
+                                                #   rg 不拷贝：已随 PREFIX/bin 进 PATH
+  install.sh --config                           # 新装：模板 + schema/ → ~/.config/opencode/（模板 $schema=./schema/config.json）
+                                                # 已有配置：jq 迁移（plugin→plugins、opencode-acp→billion-context、
+                                                #   按 v2 schema 删失效键、disabled_providers 并集、$schema 本地化；备份原文件）
+                                                #   omo-slim 配置（若存在）：$schema → ./schema/oh-my-opencode-slim.json
   install.sh --user                             # 无 root 备选：~/.local + 用户级 assets
 ```
 
@@ -112,19 +122,21 @@ per-user 种子由 install.sh 主动铺设 + README 说明；多用户机管理�
 | 1 | `opencode --standalone models` 只列本地 provider（无 opencode-go/deepseek） |
 | 2 | `opencode run` 推理成功（mock OpenAI 端点，PONG） |
 | 3 | shell 工具闭环：mock 模型发 `shell` 调用 → 本地执行 → 结果回传 → 最终答复 |
-| 4 | rg 命中本地（PATH/缓存），日志无 `Downloading from URL: github.com/BurntSushi` |
+| 4 | rg 命中本地（仅 PREFIX/bin 经 PATH；用户缓存无多余拷贝），日志无 `Downloading from URL: github.com/BurntSushi` |
 | 5 | TUI 高亮：prompt 返回代码块 → 日志无 "No parser available" 刷屏、无 GitHub 下载尝试 |
 | 6 | 启动日志无致命错误 |
 | 7 | 零配置 Ollama 自动发现 + 推理 |
 | 8 | vendored 插件离线加载（种子缓存 + config 插件 → 加载成功、无网络安装尝试） |
+| A0 | --config 迁移演练：v1 形态配置（plugin 键 + opencode-acp + 未知键）→ plugins/billion-context、失效键删除、$schema 本地化（./schema/config.json）、用户项保留、自动备份；omo-slim 配置 $schema 同步本地化 |
+| A9 | 配置 schema：独立 schema/ 目录随包、外部 $ref 递归本地化（无远程 $ref 残留 + models.dev 文件存在）、模板 $schema 本地、omo-slim schema 随包、用户 schema 目录就位 |
 
 ## 9. CI / Release
 
 - workflow：`.github/workflows/build.yml`，`workflow_dispatch`（inputs: `opencode_ref`、`platform`、`skip_verify`、`build_from_source`）；steps = checkout → bun 环境对应源码 packageManager → `bun run scripts/build.ts` → `scripts/verify.sh`（`--skip-verify` 可跳）→ Release（tag `bundle-v<ver>`，notes 含源 commit/platform/binary source）。
 - **脚本极简终态（m01362）**：scripts/ 仅 build.ts（唯一管线入口）+ install.sh + verify.sh；tests/ 仅 mock-llm.py + mock-ollama.py。
 - runner 自带外网（资产下载无需任何出口预设）；verify 用死端口断网仿真。
-- Release：tag 名 `bundle-v<opencode版本>`，附件 tar.gz + MANIFEST.json；release notes 含源 commit 与资产清单。
-- **首次 CI 绿灯实证（run 43585634372）**：ubuntu runner 全流程（worktree 检出 dev → 构建 → 资产 → 打包 → 16 项离线验收）通过并发布 `bundle-v2.3.0`。
+- Release：tag 名 `bundle-v<opencode版本>`，附件 = 平台归档（linux `.tar.gz` / win `.zip`，Windows 解压友好）+ `.sha256`；release notes 含源 commit、平台、binary source。
+- **首次 CI 绿灯实证（run 43585634372）**：ubuntu runner 全流程（worktree 检出 dev → 构建 → 资产 → 打包 → 离线验收）通过并发布 `bundle-v2.3.0`。
   踩坑记录：workflow 注册需 boolean input 用布尔默认值；runner 预设 XDG_* 必须全程 unset（否则 opencode 读错 config 目录，config provider 永不注册）；
   冷 FS 下插件激活需 provider 就绪轮询。
 - 已知限制：tar.gz 因 MANIFEST `built_at` 与文件 mtime 不做字节级可复现（内容等价；如需可加确定性打包选项）。
@@ -151,7 +163,7 @@ per-user 种子由 install.sh 主动铺设 + README 说明；多用户机管理�
 | D10 | tree-sitter 无 patch：预下载 + 复现缓存命名 per-user 种子 | 缓存命中即零网络（analysis §9）；v1 的 patch 方案不再需要 |
 | D11 | vendored npm 层 + 插件目录；目录以 verify 实际加载为准（仅 oh-my-opencode-slim 通过） | npm 短路语义已验证（analysis §8）；acp/superpowers 实测为 v1 形状插件（2.2.7 与 2.3.0 均加载失败，软 WARN 静默），移入 plugins_unverified 待复查 |
 | D12 | git worktree 构建，不动主工作区 | 用户授权自行判断 |
-| D13 | 产物命名带平台：`opencode-v<ver>-onprem-bundle-<platform>.tar.gz`；管线以 platform 参数化（linux-x64 全量验证；win32-x64 交叉编译、发布标注 unverified） | 用户要求标平台，未来发 win 版；同一 opencode 版本多平台合入同一 Release（assets 追加） |
+| D13 | 产物命名带平台：`opencode-v<ver>-onprem-bundle-<platform>.tar.gz|.zip`；管线以 platform 参数化（linux-x64 全量验证；win32-x64 发布标注 unverified） | 用户要求标平台，未来发 win 版；同一 opencode 版本多平台合入同一 Release（assets 追加） |
 | D14 | 二进制默认取官方 release（SHA256SUMS 核对，MANIFEST 记 `binary_source`），自编译降级为 `build_from_source` fallback；非 tag ref（branch/commit）必须走自编译 | 用户确认：零 patch 方针下自编译非必要；官方件变体更全（avx2/baseline、glibc/musl、win 原生件），CI 与上游构建链解耦更稳；官方件已实测通过同套 16 项验收 |
 
 ## 11. 离线行为速查（v2.3.0 证据基础）
@@ -179,3 +191,7 @@ per-user 种子由 install.sh 主动铺设 + README 说明；多用户机管理�
 | **维护者本机**（本地调试） | 视本机网络 | 无——需要出口就自己在 shell `export`，管线不感知 | `bun run scripts/build.ts`（可选） |
 
 verify.sh 内部的 死端口断网仿真(127.0.0.1:9) + `NO_PROXY=localhost` + `unset XDG_*` 是**内网仿真的实现**（测试装置），三类角色都无需关心。
+| D15 | win32-x64 归档用 zip（自包含 deflate 写入器，零外部命令、固定时间戳） | 用户：tar.gz 在 Windows 解压困难；CI 与本地均不依赖 zip/7z 工具 |
+| D16 | 配置 schema 独立 `schema/` 目录随包（build 时取 opencode.ai/config.json，递归爬取外部 `$ref`（models.dev）改写为本地文件名，`$id` 同步改本地；omo-slim 包内 schema 一并随包），模板/迁移配置 `"$schema": "./schema/config.json"` | 用户：schema 要单独目录、外部引用也要遍历；内网编辑器离线可补全/校验 |
+| D17 | `--config` 对已有配置 = jq 迁移（JSONC 预清洗 → plugin→plugins、opencode-acp→billion-context、按 v2 schema 删失效键、disabled_providers 并集、$schema 本地化、omo-slim 配置 $schema 本地化、自动备份），绝不覆盖 | 用户：覆盖用户配置会丢失有用的 provider 设置；迁移项 = v2 相对 v1 的变动 + 失效项 |
+| D18 | rg 只保留一份（PREFIX/bin，经 env.sh 进 PATH），`--seed` 不再拷贝到 ~/.cache/opencode/bin | 用户：rg 与 opencode 同处 bin 已足够，没必要复制到用户 home |

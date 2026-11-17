@@ -73,7 +73,7 @@ jobs:
             platform: \`${{ inputs.platform }}\`
             binary source: ${{ inputs.build_from_source == true && 'built from source' || 'official opencode release (SHA256SUMS-verified)' }}
             安装与离线行为说明见 bundle 内 README.md / MANIFEST.json
-            验收：verify.sh 16 项断言（模拟内网级别1：死外网 + 全新 HOME）；linux-x64 全量验证；win32-x64 未在本管线运行验证（unverified）
+            验收：verify.sh 离线断言（模拟内网级别1：死外网 + 全新 HOME）；linux-x64 全量验证；win32-x64 zip 未在本管线运行验证（unverified）
           EOF
           echo "version=$VERSION" >> "$GITHUB_ENV"
 
@@ -84,5 +84,4 @@ jobs:
           name: "opencode v${{ env.version }} onprem bundle"
           body_path: release-notes.md
           files: |
-            out/opencode-v${{ env.version }}-onprem-bundle-${{ inputs.platform }}.tar.gz
-            out/*.sha256
+            out/opencode-v${{ env.version }}-onprem-bundle-${{ inputs.platform }}.*
