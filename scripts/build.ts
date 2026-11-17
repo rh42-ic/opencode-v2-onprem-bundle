@@ -507,6 +507,41 @@ const bundleManifest = {
 }
 await Bun.write(path.join(BUNDLE, "MANIFEST.json"), JSON.stringify(bundleManifest, null, 2) + "\n")
 
+// release notes：主要程序版本 + 包内文件列表（build.ts 与 CI 共用同一份）
+function treeLines(dir: string, depth: number): string[] {
+  if (depth > 1) return []
+  const entries = readdirSync(dir, { withFileTypes: true })
+    .filter((e) => !e.name.startsWith("."))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  return entries.flatMap((e, i) => {
+    const last = i === entries.length - 1
+    const line = (last ? "└── " : "├── ") + e.name + (e.isDirectory() ? "/" : "")
+    if (!e.isDirectory()) return [line]
+    const sub = treeLines(path.join(dir, e.name), depth + 1).map((l) => (last ? "    " : "│   ") + l)
+    return [line, ...sub]
+  })
+}
+const releaseNotes = [
+  `# opencode v${VERSION} onprem bundle (${PLATFORM})`,
+  "",
+  "## 主要程序版本",
+  "",
+  `- opencode ${VERSION}（${BINARY_SOURCE === "official-release" ? "官方 release 二进制" : "源码构建"}，upstream commit ${COMMIT.slice(0, 7)}）`,
+  `- ripgrep ${assetsJson.ripgrep_version}`,
+  `- bun ${process.versions.bun}（构建用）`,
+  `- 插件：${(assetsJson.npm ?? []).map((p: { name: string; version: string }) => `${p.name} ${p.version}`).join("、")}`,
+  `- tree-sitter：${assetsJson.tree_sitter.filetypes} 语言 / ${assetsJson.tree_sitter.queries} 查询`,
+  "",
+  "## 包内文件",
+  "",
+  "```",
+  `${NAME}/`,
+  ...treeLines(BUNDLE, 0),
+  "```",
+]
+if (PLATFORM !== "linux-x64") releaseNotes.push("", "win32-x64 未在本管线运行验证（unverified）。")
+writeFileSync(path.join(WORK, "release-notes.md"), releaseNotes.join("\n") + "\n")
+
 const OUT_DIR = path.join(REPO_ROOT, "out")
 mkdirSync(OUT_DIR, { recursive: true })
 // win32-x64 用 zip（Windows 解压 tar.gz 困难）；linux-x64 用 tar.gz
