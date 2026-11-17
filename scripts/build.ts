@@ -39,6 +39,18 @@ async function sh(cmd: string[], opts: { cwd?: string; env?: Record<string, stri
   if (code !== 0) throw new Error(`${cmd.join(" ")}\nexit ${code}: ${err.trim().slice(-800)}`)
   return out
 }
+
+// 网络抖动重试（直连 GitHub 偶发 TLS 中断）
+async function shRetry(cmd: string[], attempts = 3) {
+  for (let i = 1; ; i++) {
+    try {
+      return await sh(cmd)
+    } catch (e) {
+      if (i >= attempts) throw e
+      log(`retry ${i}/${attempts - 1}: ${cmd.slice(0, 2).join(" ")}`)
+    }
+  }
+}
 const mkdtemp = async () => (await sh(["mktemp", "-d"])).trim()
 const sha256File = async (file: string) =>
   createHash("sha256").update(new Uint8Array(await Bun.file(file).arrayBuffer())).digest("hex")
@@ -346,11 +358,11 @@ for (const p of manifest.plugins ?? []) {
     if (!m) throw new Error(`bad git spec: ${p.spec}`)
     const ref = p.git_ref ?? m[2]
     if (ref && /^[a-f0-9]{40}$/i.test(ref)) {
-      await sh(["git", "clone", "--quiet", m[1], path.join(tmp, "pkg")])
-      await sh(["git", "-C", path.join(tmp, "pkg"), "fetch", "--quiet", "--depth", "1", "origin", ref])
+      await shRetry(["git", "clone", "--quiet", m[1], path.join(tmp, "pkg")])
+      await shRetry(["git", "-C", path.join(tmp, "pkg"), "fetch", "--quiet", "--depth", "1", "origin", ref])
       await sh(["git", "-C", path.join(tmp, "pkg"), "checkout", "--quiet", "--detach", "FETCH_HEAD"])
     } else {
-      await sh(ref ? ["git", "clone", "--quiet", "--depth", "1", "--branch", ref, m[1], path.join(tmp, "pkg")] : ["git", "clone", "--quiet", "--depth", "1", m[1], path.join(tmp, "pkg")])
+      await shRetry(ref ? ["git", "clone", "--quiet", "--depth", "1", "--branch", ref, m[1], path.join(tmp, "pkg")] : ["git", "clone", "--quiet", "--depth", "1", m[1], path.join(tmp, "pkg")])
     }
     const pkgMeta = JSON.parse(await Bun.file(path.join(tmp, "pkg", "package.json")).text())
     version = pkgMeta.version
@@ -473,8 +485,9 @@ writeFileSync(path.join(BUNDLE, "config/opencode.airgap.json"), tpl.replace("/*_
 await sh(["cp", path.join(REPO_ROOT, "config/target-readme.md"), path.join(BUNDLE, "README.md")])
 await sh(["cp", "-a", schemaDir, path.join(BUNDLE, "schema")])
 await sh(["cp", path.join(REPO_ROOT, "config/env.sh"), path.join(BUNDLE, "env.sh")])
+await sh(["cp", path.join(REPO_ROOT, "config/seed.sh"), path.join(BUNDLE, "seed.sh")])
 await sh(["cp", path.join(REPO_ROOT, "scripts/install.sh"), path.join(BUNDLE, "install.sh")])
-await sh(["chmod", "755", path.join(BUNDLE, "install.sh")])
+await sh(["chmod", "755", path.join(BUNDLE, "install.sh"), path.join(BUNDLE, "seed.sh")])
 
 const bundleManifest = {
   name: manifest.name,

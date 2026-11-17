@@ -11,23 +11,17 @@ sudo ./install.sh --prefix /your/dir  # 自定义
 
 ```bash
 source /opt/opencode/env.sh           # PATH + 关闭联网检查等环境
-/opt/opencode/install.sh --seed       # 铺 TUI 语法高亮 + 全部 vendored 插件缓存（幂等，可重复）
-/opt/opencode/install.sh --config     # 新装复制配置模板（+本地 schema）；已有配置则 jq 迁移，不覆盖
+/opt/opencode/seed.sh                 # 铺 TUI 语法高亮 + 全部 vendored 插件缓存（幂等，可重复）
 ```
 
 ## 配置与 schema
 
-- 配置模板 `config/opencode.airgap.json`（build 时已注入 vendored 插件清单）。
+- 配置模板 `config/opencode.airgap.json`（build 时已注入 vendored 插件清单）：复制为 `~/.config/opencode/opencode.jsonc` 后填写 provider。
 - JSON schema 独立目录 `schema/`（外部 `$ref` 已递归本地化，编辑器离线可用）：
-  - `schema/config.json` — opencode 配置；`--config` 会把整个目录放到 `~/.config/opencode/schema/`，模板/迁移后的 `"$schema"` 为 `./schema/config.json`
+  - `schema/config.json` — opencode 配置；如需本地补全，把 `schema/` 复制到 `~/.config/opencode/schema/`，配置 `"$schema": "./schema/config.json"`
   - `schema/models.dev-model-schema.json` — config schema 引用的 models.dev 模型定义（本地改写）
   - `schema/oh-my-opencode-slim.json` — omo-slim 插件配置用；其配置 `~/.config/opencode/oh-my-opencode-slim.json` 的 `"$schema"` 可写 `./schema/oh-my-opencode-slim.json`
-- `--config` 对已有配置执行迁移（**不覆盖用户设置**，自动备份原文件）：
-  - `plugin`（v1 键）→ `plugins`（v2 键）
-  - `opencode-acp@…` → `billion-context`（v2 继任者；acp 在 v2 加载失败会阻塞 model.list）
-  - 删除 v2 schema 中不存在的失效键；`disabled_providers` 与模板取并集
-  - omo-slim 配置（若存在）的 `"$schema"` 改指本地副本
-  - 注意：迁移后注释会丢失（原文件已备份为 `opencode.jsonc.bak.<时间戳>`）
+- v1 旧配置：手工迁移 `plugin`（v1 键）→ `plugins`（v2 键）；`opencode-acp@…` → `billion-context`（acp 在 v2 加载失败会阻塞 model.list）。
 
 ## 本地 LLM
 

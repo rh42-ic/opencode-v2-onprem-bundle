@@ -20,17 +20,16 @@ GitHub [Releases](../../releases) —— 每个 opencode 上游版本一个 `bun
 tar xzf opencode-v*-onprem-bundle-linux-x64.tar.gz
 # Windows：解压 opencode-v*-onprem-bundle-win32-x64.zip
 cd opencode-v*-onprem-<platform>
-sudo ./install.sh                 # 默认装到 /opt/opencode；无 root 用 --user（~/.local）
+sudo ./install.sh                 # 只做拷贝，默认 /opt/opencode（--prefix 可改）
 source /opt/opencode/env.sh       # PATH + 离线开关（随包静态文件）
-./install.sh --seed               # 铺 per-user 缓存：语法高亮 + 全部 vendored 插件（幂等）
-./install.sh --config             # 新装复制模板（+本地 schema）；已有配置则 jq 迁移，不覆盖
+/opt/opencode/seed.sh             # per-user 缓存种子：语法高亮 + 全部 vendored 插件（幂等）
 ```
 
-然后编辑 `~/.config/opencode/opencode.jsonc` 填入内网 LLM 端点（LiteLLM/openai-compatible 示例已内置）。
+配置：把 `config/opencode.airgap.json` 复制为 `~/.config/opencode/opencode.jsonc`，填入内网 LLM 端点
+（LiteLLM/openai-compatible 示例已内置；本地 `schema/` 目录可一并复制到 `~/.config/opencode/schema/` 供编辑器补全）。
 Ollama(11434) / vLLM(8000) 零配置自动发现。
 
-已有 v1 配置的机器直接跑 `--config`：`plugin`→`plugins`、`opencode-acp`→`billion-context`、失效键清理、`$schema` 指向本地，
-原文件自动备份；注释会丢弃（迁移结果为标准 JSON）。
+v1 旧配置：手工迁移 `plugin` → `plugins`，并把 `opencode-acp` 换成 `billion-context`（acp 在 v2 加载失败会阻塞模型列表）。
 
 ## 包里有什么
 
@@ -43,7 +42,8 @@ opencode-<ver>-onprem-<platform>/
 ├── config/opencode.airgap.json     # 内网配置模板
 ├── schema/…                        # JSON schema 目录（opencode config / models.dev / omo-slim，外部引用已本地化）
 ├── env.sh                          # 随包静态文件：PATH + 离线开关（所有用户 source 同一份）
-├── install.sh                      # 安装脚本（纯拷贝 + --seed/--config）
+├── install.sh                      # 安装脚本（只做拷贝）
+├── seed.sh                         # per-user 缓存种子（语法高亮 + 插件，幂等）
 ├── README.md                       # 目标机版使用说明
 └── MANIFEST.json                   # 版本/平台/来源/资产清单/sha256
 ```
