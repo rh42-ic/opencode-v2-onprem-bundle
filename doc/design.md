@@ -127,7 +127,7 @@ sudo ./install.sh [--prefix /opt/opencode]     # 管理员侧，默认 /opt/open
 
 ## 9. CI / Release
 
-- workflow：`.github/workflows/build.yml`，`workflow_dispatch`（inputs: `opencode_ref`、`platform`、`skip_verify`、`build_from_source`）；steps = checkout → bun 环境对应源码 packageManager → `bun run scripts/build.ts` → `scripts/verify.sh`（`--skip-verify` 可跳）→ Release（tag `bundle-v<ver>`，notes = 包内文件列表 + 主要程序版本）。
+- workflow：`.github/workflows/build.yml`，`workflow_dispatch`（inputs: `opencode_ref`、`platform`（`all`/`linux-x64`/`win32-x64`，默认 `all`）、`skip_verify`、`build_from_source`）；steps = checkout → bun 环境对应源码 packageManager → `bun run scripts/build.ts` → `scripts/verify.sh`（`--skip-verify` 可跳）→ Release（tag `bundle-v<ver>`，notes = 包内文件列表 + 主要程序版本）。多平台用 matrix 展开（`max-parallel: 1`，linux 先跑写入 body）。
 - **脚本极简终态（m01362）**：scripts/ 仅 build.ts（唯一管线入口）+ install.sh + verify.sh；tests/ 仅 mock-llm.py + mock-ollama.py。
 - runner 自带外网（资产下载无需任何出口预设）；verify 用死端口断网仿真。
 - Release：tag 名 `bundle-v<opencode版本>`，附件 = 平台归档（linux `.tar.gz` / win `.zip`，Windows 解压友好）+ `.sha256`；release notes 由 build.ts 生成（`work/release-notes.md`）= 包内文件列表 + 主要程序版本（opencode/rg/bun/插件/tree-sitter）；**body 以 linux 版为主**：linux 轮写入/刷新 body，其他平台轮只上传资产。

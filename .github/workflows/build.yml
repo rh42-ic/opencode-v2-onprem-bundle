@@ -10,9 +10,10 @@ on:
       platform:
         description: "target platform"
         required: false
-        default: "linux-x64"
+        default: "all"
         type: choice
         options:
+          - all
           - linux-x64
           - win32-x64
       skip_verify:
@@ -31,7 +32,14 @@ permissions:
 
 jobs:
   build:
+    name: build (${{ matrix.platform }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # 顺序执行：linux 先发布 body，win 轮只传资产（两者不并行，避免 Release 创建竞态）
+      max-parallel: 1
+      matrix:
+        platform: ${{ fromJSON(inputs.platform == 'all' && '["linux-x64","win32-x64"]' || format('["{0}"]', inputs.platform)) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +64,7 @@ jobs:
         run: |
           ARGS=""
           if [ "${{ inputs.build_from_source }}" = "true" ]; then ARGS="$ARGS --from-source"; fi
-          bun run scripts/build.ts --ref "${{ steps.prep.outputs.ref }}" --platform "${{ inputs.platform }}" $ARGS
+          bun run scripts/build.ts --ref "${{ steps.prep.outputs.ref }}" --platform "${{ matrix.platform }}" $ARGS
 
       - name: Verify offline
         if: ${{ inputs.skip_verify != true }}
@@ -72,19 +80,19 @@ jobs:
 
       # release 说明以 linux 版为主：linux 轮写入/刷新 body，其他平台轮只上传资产（不改 body/标题）
       - name: Publish release (linux body)
-        if: ${{ inputs.platform == 'linux-x64' }}
+        if: ${{ matrix.platform == 'linux-x64' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "bundle-v${{ env.version }}"
           name: "opencode v${{ env.version }} onprem bundle"
           body_path: release-notes.md
           files: |
-            out/opencode-v${{ env.version }}-onprem-bundle-${{ inputs.platform }}.*
+            out/opencode-v${{ env.version }}-onprem-bundle-${{ matrix.platform }}.*
 
       - name: Publish release (assets only)
-        if: ${{ inputs.platform != 'linux-x64' }}
+        if: ${{ matrix.platform != 'linux-x64' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "bundle-v${{ env.version }}"
           files: |
-            out/opencode-v${{ env.version }}-onprem-bundle-${{ inputs.platform }}.*
+            out/opencode-v${{ env.version }}-onprem-bundle-${{ matrix.platform }}.*

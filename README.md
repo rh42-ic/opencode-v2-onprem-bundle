@@ -60,8 +60,9 @@ opencode-<ver>-onprem-<platform>/
 构建全部在 GitHub Actions 完成（`workflow_dispatch`，绿灯自动发 Release）：
 
 ```
-gh workflow run build.yml                                      # 默认：upstream 最新 tag + linux-x64
-gh workflow run build.yml -f opencode_ref=vX.Y.Z -f platform=win32-x64
+gh workflow run build.yml                                      # 默认：upstream 最新 tag + 双平台（all）
+gh workflow run build.yml -f opencode_ref=vX.Y.Z -f platform=all
+gh workflow run build.yml -f opencode_ref=vX.Y.Z -f platform=win32-x64   # 单平台
 ```
 
 管线设计与决策记录：`doc/design.md`；opencode 离线行为源码证据：`doc/analysis.md`。
