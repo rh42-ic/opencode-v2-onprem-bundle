@@ -1,0 +1,72 @@
+// opencode v2 内网配置模板（JSONC：注释与尾随逗号合法）
+// 用法：把本文件复制为 ~/.config/opencode/opencode.jsonc，schema/ 目录复制到 ~/.config/opencode/schema/，
+// 然后填写「本地 LLM」一节。所有键均为 v2 形态（v1 已废弃键：provider/plugin/permission/
+// disabled_providers/autoupdate 等，本模板一律不用）。
+{
+  "$schema": "./schema/config.json",
+
+  // ── 基础开关 ────────────────────────────────────────────────────────────────
+  "update": "disable",      // disable | notify | auto
+  "share": "disabled",      // 内网禁用会话分享
+  "websearch": false,       // 内网无外网：关闭内置 web 搜索工具
+
+  // 云端 provider 直接拒绝（Ollama / vLLM 本地发现不受影响）
+  "policies": [
+    { "action": "provider.use", "resource": "opencode", "effect": "deny" },
+    { "action": "provider.use", "resource": "opencode-go", "effect": "deny" }
+  ],
+
+  // ── 权限（规则按顺序求值，后一条覆盖前一条；action 与 resource 都支持 * 通配）──
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "ask" },   // 兜底：未知动作先询问
+    // 读类与技能放开
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "list", "resource": "*", "effect": "allow" },
+    { "action": "skill", "resource": "*", "effect": "allow" },
+    // 编辑放开（想逐次确认就改成 "ask"）
+    { "action": "edit", "resource": "*", "effect": "allow" },
+    // 敏感文件：读取需确认（排在 read allow 之后，后条优先）
+    { "action": "read", "resource": "*.env", "effect": "ask" },
+    { "action": "read", "resource": "*.env.*", "effect": "ask" },
+    { "action": "read", "resource": "**/*.pem", "effect": "ask" },
+    { "action": "read", "resource": "**/*.key", "effect": "ask" },
+    // bash：只读命令放行，其余一律询问（写操作、删除、git push 等都会问）
+    { "action": "bash", "resource": "*", "effect": "ask" },
+    { "action": "bash", "resource": "git status*", "effect": "allow" },
+    { "action": "bash", "resource": "git diff*", "effect": "allow" },
+    { "action": "bash", "resource": "git log*", "effect": "allow" },
+    { "action": "bash", "resource": "git show*", "effect": "allow" },
+    { "action": "bash", "resource": "git branch*", "effect": "allow" },
+    { "action": "bash", "resource": "ls *", "effect": "allow" },
+    // 内网无外网：网络类动作拒绝
+    { "action": "webfetch", "resource": "*", "effect": "deny" },
+    { "action": "websearch", "resource": "*", "effect": "deny" }
+  ],
+
+  // ── 本地 LLM（用户自填）────────────────────────────────────────────────────
+  // LiteLLM 网关（OpenAI 兼容）示例。v2 用 "providers"（v1 "provider" 已废弃）；
+  // "package" 必须保留：指向编译进二进制的内置 provider 包（零 npm 依赖）。
+  //
+  // "providers": {
+  //   "litellm": {
+  //     "package": "@opencode/ai/providers/openai-compatible",
+  //     "settings": {
+  //       "baseURL": "http://<内网网关地址>/v1",
+  //       "apiKey": "<网关 key，无鉴权可填任意非空串>"
+  //     },
+  //     "models": {
+  //       "<model-id>": { "name": "<显示名>" }
+  //     }
+  //   }
+  // },
+  // "model": "litellm/<model-id>",
+  //
+  // Ollama（127.0.0.1:11434）/ vLLM（127.0.0.1:8000）无需配置，启动后自动发现。
+  // omo-slim 插件的智能体编排预设示例见 config/oh-my-opencode-slim.example.jsonc。
+
+  // ── 插件（build 时注入 vendored 清单；手工复制本模板时原样保留）────────────
+  // 键写法：裸名 = @latest；git 源用完整 spec（SHA 钉定零网络）。
+  "plugins": [/*__PLUGINS__*/],
+}

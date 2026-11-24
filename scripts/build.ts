@@ -156,7 +156,7 @@ async function download(url: string, dest: string) {
 let REF = argv1("--ref")
 const REPO = SRC_REPO_ENV ?? "https://github.com/anomalyco/opencode"
 if (!REF) {
-  const tags = await sh(["git", "ls-remote", "--tags", "--refs", "--sort=-v:refname", REPO, "v*"])
+  const tags = await sh(["git", "ls-remote", "--tags", "--refs", "--sort=-v:refname", REPO, "v[0-9]*"])
   REF = tags.split("\n")[0]?.split("refs/tags/")[1]
   if (!REF) throw new Error("no v* tag found")
 }
@@ -477,11 +477,14 @@ await sh(["cp", "-a", path.join(ASSETS, "tree-sitter"), path.join(BUNDLE, "asset
 if (existsSync(path.join(ASSETS, "npm"))) {
   await sh(["cp", "-a", path.join(ASSETS, "npm"), path.join(BUNDLE, "assets/npm")])
 }
-// config 模板：注入 vendored 插件清单（占位符 → JSON 数组）
-const tpl = await Bun.file(path.join(REPO_ROOT, "config/opencode.airgap.json")).text()
-const inject = (manifest.plugins ?? []).map((p: { spec: string }) => JSON.stringify(p.spec)).join(", ")
+// config 模板：注入**默认启用**的插件（default=on）；其余只打包（seed.sh 照种缓存，用户改 config 即启用）
+const enabled = (manifest.plugins ?? []).filter((p: { default?: string }) => p.default === "on")
+const tpl = await Bun.file(path.join(REPO_ROOT, "config/opencode.airgap.jsonc")).text()
+const inject = enabled.map((p: { spec: string }) => JSON.stringify(p.spec)).join(", ")
 if (!tpl.includes("/*__PLUGINS__*/")) throw new Error("config template missing /*__PLUGINS__*/ placeholder")
-writeFileSync(path.join(BUNDLE, "config/opencode.airgap.json"), tpl.replace("/*__PLUGINS__*/", inject))
+writeFileSync(path.join(BUNDLE, "config/opencode.airgap.jsonc"), tpl.replace("/*__PLUGINS__*/", inject))
+await sh(["cp", path.join(REPO_ROOT, "config/oh-my-opencode-slim.example.jsonc"), path.join(BUNDLE, "config/")])
+await sh(["cp", path.join(REPO_ROOT, "config/opencode-litellm.example.jsonc"), path.join(BUNDLE, "config/")])
 await sh(["cp", path.join(REPO_ROOT, "config/target-readme.md"), path.join(BUNDLE, "README.md")])
 await sh(["cp", "-a", schemaDir, path.join(BUNDLE, "schema")])
 await sh(["cp", path.join(REPO_ROOT, "config/env.sh"), path.join(BUNDLE, "env.sh")])

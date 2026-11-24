@@ -53,7 +53,7 @@ opencode-<ver>-onprem/
 │   ├── tree-sitter/languages/*.wasm      # 34 语言，文件名 = URL basename（=opentui 缓存名）
 │   ├── tree-sitter/queries/<ft>-<hash>.scm  # 91 URL 全量，hash 复现 opentui hashUrl
 │   └── npm/<pkg>@<spec>/node_modules/... # vendored 插件/格式化器完整依赖树
-├── config/opencode.airgap.json           # 内网配置模板
+├── config/opencode.airgap.jsonc          # 内网配置模板
 ├── schema/                               # JSON schema 独立目录（外部 $ref 递归本地化）
 │   ├── config.json                       # opencode 配置 schema（$id 已改本地文件名）
 │   ├── models.dev-model-schema.json      # config schema 外部引用（models.dev 模型定义）
@@ -70,7 +70,7 @@ opencode-<ver>-onprem/
 |---|---|---|---|
 | rg | `packages/core/src/ripgrep/binary.ts` 的 VERSION + 平台表（linux=x64-linux / win=x64-win32） | GitHub release（musl x64 / msvc zip，sha256 与源码常量核对） | `bin/rg(.exe)` |
 | tree-sitter | bun import `packages/tui/src/parsers-config.ts` | 全部 wasm + queries URL（遵循出口环境变量，.dl-cache 幂等） | `assets/tree-sitter/{languages,queries}/`（命名规则见 analysis §9） |
-| npm 插件 | manifest `plugins[]`（spec/git_ref/description） | registry：临时项目 npm install → 抽取 node_modules 子树；git：clone（SHA 钉定零网络）→ 就地装包内依赖 | `assets/npm/<key>/node_modules/<真实包名>/`（键规则见下） |
+| npm 插件 | manifest `plugins[]`（spec/git_ref/default/description） | registry：临时项目 npm install → 抽取 node_modules 子树；git：clone（SHA 钉定零网络）→ 就地装包内依赖 | `assets/npm/<key>/node_modules/<真实包名>/`（键规则见下） |
 | 配置 schema | `https://opencode.ai/config.json`（v2 发布形态，兼容 v1 键） | 每次构建现取；递归爬取外部 `$ref`（当前仅 `models.dev/model-schema.json`）并改写为本地文件名（`$id` 同步改本地，否则相对 `$ref` 按远程 base URI 解析）；omo-slim 包内 schema 一并拷入 | `schema/config.json` + 外部引用文件 + `schema/oh-my-opencode-slim.json`；模板 `"$schema": "./schema/config.json"` |
 
 npm 种子键规则（复现 `npm.ts:84`）：config 写 `pkg` → 键 `<pkg>@latest`；写 `pkg@stable` → 键 `<pkg>@stable`。
@@ -81,9 +81,12 @@ npm 种子键规则（复现 `npm.ts:84`）：config 写 `pkg` → 键 `<pkg>@la
 | 插件 | spec 写法 | default | 实测 |
 |---|---|---|---|
 | oh-my-opencode-slim | `oh-my-opencode-slim` | on | ✅ 加载成功（2.3.0） |
-| billion-context | `billion-context` | on | ✅ 0.1.213 加载成功（opencode-native 入口；acp 的 v2 继任者） |
-| opencode-acp | `opencode-acp@stable` | ❌ 移出目录 | 1.18.1 在 2.2.7 与 2.3.0 均加载失败（v1 形状）；v2 由 billion-context 取代 |
-| superpowers | `superpowers` | ❌ 移出目录 | 0.0.2 同上 |
+| billion-context | `billion-context` | on | ✅ 0.1.213+ 加载成功（opencode-native 入口；acp 的 v2 继任者） |
+| superpowers | `superpowers@git+https://github.com/obra/superpowers.git` | off（只打包） | 技能库，跟随 main（不钉版本，用户要求） |
+| opencode-litellm | `opencode-litellm@git+https://github.com/yuseferi/opencode-litellm.git` | off（只打包） | LiteLLM 零配置 provider（自动发现 /v1/models）；npm 名 opencode-plugin-litellm，V2 支持尚未进 npm 发布版，必须走 git 源 |
+
+默认启用 = 构建时注入配置模板（`default: "on"`）；只打包 = `seed.sh` 照常种到用户缓存，用户在 config `plugins` 里自行加 spec 即启用（零网络）。
+| opencode-acp | — | — | 已彻底删除（1.18.1 在 2.2.7 与 2.3.0 均加载失败，v1 形状；历史记录见 git log 与 analysis） |
 
 移出者记录在 manifest `plugins_unverified`（含复查方法），upstream 发布 v2 API 版本后可移回。
 
@@ -97,7 +100,7 @@ sudo ./install.sh [--prefix /opt/opencode]     # 管理员侧，默认 /opt/open
 ├── assets/...                                  # 种子源（per-user 复制用）
 ├── env.sh                                      # 随包静态文件原样拷贝：PATH 自定位 + 三个离线开关；网络配置用户自填
 ├── seed.sh                                     # per-user 缓存种子（独立脚本，幂等）
-├── config/opencode.airgap.json                 # 配置模板（用户手工复制）
+├── config/opencode.airgap.jsonc                # 配置模板（用户手工复制）
 └── schema/                                     # JSON schema 目录（config + 外部引用 + omo-slim）
 
 用户侧（source env.sh 后）：

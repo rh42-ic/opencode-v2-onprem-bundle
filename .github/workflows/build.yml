@@ -48,7 +48,7 @@ jobs:
         run: |
           REF="${{ inputs.opencode_ref }}"
           if [ -z "$REF" ]; then
-            REF="$(git ls-remote --tags --refs --sort='-v:refname' https://github.com/anomalyco/opencode 'v*' | head -1 | sed 's|.*refs/tags/||')"
+            REF="$(git ls-remote --tags --refs --sort='-v:refname' https://github.com/anomalyco/opencode 'v[0-9]*' | head -1 | sed 's|.*refs/tags/||')"
             [ -n "$REF" ] || { echo "no tag found" >&2; exit 1; }
           fi
           echo "ref=$REF" >> "$GITHUB_OUTPUT"

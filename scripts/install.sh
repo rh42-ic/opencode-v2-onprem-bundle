@@ -4,7 +4,7 @@
 #   sudo ./install.sh                  # 默认 /opt/opencode
 #   sudo ./install.sh --prefix <dir>
 # 用户侧（source $PREFIX/env.sh 后）: $PREFIX/seed.sh      # per-user 缓存种子（幂等）
-# 配置：参考 $PREFIX/config/opencode.airgap.json 自行创建 ~/.config/opencode/opencode.jsonc
+# 配置：参考 $PREFIX/config/opencode.airgap.jsonc 自行创建 ~/.config/opencode/opencode.jsonc
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

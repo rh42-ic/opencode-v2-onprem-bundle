@@ -1,0 +1,20 @@
+{
+  // opencode-litellm 插件配置样板（github.com/yuseferi/opencode-litellm，随包示例）
+  // 插件自动探测 LiteLLM proxy（localhost:4000/8000/8080）并从 /v1/models 发现全部模型，
+  // 无需手写模型列表；内网请显式写 baseURL（自动探测只查 localhost）。
+  // 内网插件 spec 与 bundle 内置一致；公网可直接用 npm 包 "opencode-plugin-litellm@latest"。
+  "$schema": "./schema/config.json",
+  "plugins": [
+    "opencode-litellm@git+https://github.com/yuseferi/opencode-litellm.git"
+  ],
+  "providers": {
+    "litellm": {
+      "name": "LiteLLM (proxy)",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://litellm.internal.example.com/v1",
+        "apiKey": "{env:LITELLM_API_KEY}"
+      }
+    }
+  }
+}

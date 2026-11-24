@@ -25,11 +25,11 @@ source /opt/opencode/env.sh       # PATH + 离线开关（随包静态文件）
 /opt/opencode/seed.sh             # per-user 缓存种子：语法高亮 + 全部 vendored 插件（幂等）
 ```
 
-配置：把 `config/opencode.airgap.json` 复制为 `~/.config/opencode/opencode.jsonc`，填入内网 LLM 端点
+配置：把 `config/opencode.airgap.jsonc` 复制为 `~/.config/opencode/opencode.jsonc`，填入内网 LLM 端点
 （LiteLLM/openai-compatible 示例已内置；本地 `schema/` 目录可一并复制到 `~/.config/opencode/schema/` 供编辑器补全）。
 Ollama(11434) / vLLM(8000) 零配置自动发现。
 
-v1 旧配置：手工迁移 `plugin` → `plugins`，并把 `opencode-acp` 换成 `billion-context`（acp 在 v2 加载失败会阻塞模型列表）。
+v1 旧配置：手工迁移 `plugin` → `plugins`；`opencode-acp` 在 v2 加载失败会阻塞模型列表，请移除（换本包内置插件）。
 
 ## 包里有什么
 
@@ -39,14 +39,17 @@ opencode-<ver>-onprem-<platform>/
 ├── bin/rg(.exe)                    # ripgrep（linux = musl 静态版；win = msvc 版）
 ├── assets/tree-sitter/…            # TUI 语法高亮：34 语言 wasm + 查询文件（离线种子）
 ├── assets/npm/…                    # vendored 插件完整依赖树（离线种子）
-├── config/opencode.airgap.json     # 内网配置模板
+├── config/opencode.airgap.jsonc    # 内网配置模板
 ├── schema/…                        # JSON schema 目录（opencode config / models.dev / omo-slim，外部引用已本地化）
+├── config/opencode-litellm.example.jsonc  # LiteLLM 插件配置样板
 ├── env.sh                          # 随包静态文件：PATH + 离线开关（所有用户 source 同一份）
 ├── install.sh                      # 安装脚本（只做拷贝）
 ├── seed.sh                         # per-user 缓存种子（语法高亮 + 插件，幂等）
 ├── README.md                       # 目标机版使用说明
 └── MANIFEST.json                   # 版本/平台/来源/资产清单/sha256
 ```
+
+内置插件：默认启用 oh-my-opencode-slim、billion-context（构建时注入模板）；superpowers、opencode-litellm 只打包不默认启用（`seed.sh` 照种缓存，在 config `plugins` 加 spec 即启用，样板见 `config/opencode-litellm.example.jsonc`）。
 
 ## 能力与限制（v2.3.0 实测）
 

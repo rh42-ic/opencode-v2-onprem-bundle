@@ -73,7 +73,7 @@ env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME HOME
 
 # ── A9: 配置 schema 独立目录 + 外部引用递归本地化 + omo-slim schema ─────────────
 [ -f "$TMP/opt/schema/config.json" ] && pass "A9 bundle 含配置 schema 目录（schema/config.json）" || fail "A9 bundle 缺 schema/config.json"
-grep -q '"./schema/config.json"' "$TMP/opt/config/opencode.airgap.json" 2>/dev/null \
+grep -q '"./schema/config.json"' "$TMP/opt/config/opencode.airgap.jsonc" 2>/dev/null \
   && pass "A9 模板 \$schema 指向本地" || fail "A9 模板仍指向远程 schema"
 jq -e '[.. | objects | .["$ref"]? | strings | select(test("^https?://"))] | length == 0' "$TMP/opt/schema/config.json" >/dev/null 2>&1 \
   && pass "A9 schema 无残留远程 \$ref（已递归本地化）" || fail "A9 schema 仍含远程 \$ref"
@@ -197,10 +197,12 @@ fi
 
 # A8: vendored 插件离线加载（前置已验缓存落地；此处核对数量与 config 注入）
 N_VENDORED="$(ls "$TMP/opt/assets/npm" | wc -l)"
-[ "$N_VENDORED" -ge 3 ] && pass "A8 目录覆盖 $N_VENDORED 个 vendored 插件" || fail "A8 目录数量异常: $N_VENDORED"
+[ "$N_VENDORED" -ge 4 ] && pass "A8 目录覆盖 $N_VENDORED 个 vendored 插件" || fail "A8 目录数量异常: $N_VENDORED"
 grep -q "oh-my-opencode-slim" "$HOME/.config/opencode/opencode.jsonc" 2>/dev/null \
-  && grep -q "superpowers@git" "$HOME/.config/opencode/opencode.jsonc" \
-  && pass "A8 config 含 plugins（模板注入）" || fail "A8 config 缺 plugins"
+  && grep -q "billion-context" "$HOME/.config/opencode/opencode.jsonc" \
+  && pass "A8 config 含默认启用插件（模板注入）" || fail "A8 config 缺默认启用插件"
+grep -q "opencode-litellm@git\|superpowers@git" "$HOME/.config/opencode/opencode.jsonc" \
+  && fail "A8 非 default 插件不应注入 config" || pass "A8 仅默认启用插件注入 config"
 
 # ── 结果 ──────────────────────────────────────────────────────────────────────
 echo "[verify] =================================================="

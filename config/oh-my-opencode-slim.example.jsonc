@@ -1,0 +1,17 @@
+{
+  // oh-my-opencode-slim 编排预设示例（内网 airgap：全部智能体走 LiteLLM 网关）
+  // 复制为 ~/.config/opencode/oh-my-opencode-slim.jsonc，把 <model-id> 换成 LiteLLM 里的模型 id。
+  // schema 随包（schema/oh-my-opencode-slim.json），编辑器可离线校验。
+  "$schema": "./schema/oh-my-opencode-slim.json",
+  "autoUpdate": false,
+  "preset": "airgap",
+  "presets": {
+    "airgap": {
+      "orchestrator": { "model": "litellm/<model-id>", "variant": "medium", "skills": ["*"] },
+      "oracle": { "model": "litellm/<model-id>", "variant": "xhigh", "skills": ["simplify"] },
+      "explorer": { "model": "litellm/<model-id>", "variant": "low", "skills": [] },
+      "designer": { "model": "litellm/<model-id>", "variant": "medium", "skills": [] },
+      "fixer": { "model": "litellm/<model-id>", "variant": "high", "skills": [] }
+    }
+  }
+}
