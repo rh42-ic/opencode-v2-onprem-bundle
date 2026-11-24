@@ -4,8 +4,8 @@
   "plugins": [
     { "spec": "oh-my-opencode-slim", "default": "on", "description": "v2 兼容（verify 实测加载成功）；默认启用" },
     { "spec": "billion-context", "default": "on", "description": "上下文压缩（acp 的 v2 继任者）；实测 0.1.213+ 加载成功；默认启用" },
-    { "spec": "superpowers@git+https://github.com/obra/superpowers.git", "default": "off", "description": "技能库，跟随 main（不钉版本，用户要求）；只打包不默认启用，启用见 config/opencode-litellm 样板说明" },
-    { "spec": "opencode-litellm@git+https://github.com/yuseferi/opencode-litellm.git", "default": "off", "description": "LiteLLM 零配置 provider（自动发现 /v1/models）；npm 包名 opencode-plugin-litellm，V2 支持尚未进 npm 发布版，必须走 git 源；只打包不默认启用" }
+    { "spec": "superpowers@git+https://github.com/obra/superpowers.git#22f0b463e7a5e579904dd6211a520321035526f7", "default": "off", "description": "技能库；钉 main HEAD SHA（不钉则离线加载走网络 update 而失败）；每次 push 前按 AGENTS.md 检查新版更新" },
+    { "spec": "opencode-litellm@git+https://github.com/yuseferi/opencode-litellm.git#03c407725de0836ecdce68d53e0fc4291dc934d8", "default": "off", "description": "LiteLLM 零配置 provider（自动发现 /v1/models）；npm 名 opencode-plugin-litellm，V2 支持尚未进 npm 发布版，必须走 git 源；只打包不默认启用；钉 main HEAD SHA，每次 push 前按 AGENTS.md 检查新版更新" }
   ],
   "plugins_unverified": []
 }

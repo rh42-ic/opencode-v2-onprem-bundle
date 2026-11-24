@@ -97,7 +97,7 @@ source "$TMP/opt/env.sh"   # 离线开关由随包 env.sh 提供（同时验证�
 mkdir -p "$HOME/.config/opencode"
 python3 - "$TMP/opt/MANIFEST.json" "$HOME/.config/opencode/opencode.jsonc" <<'PYEOF'
 import json, sys
-specs = [p["spec"] for p in json.load(open(sys.argv[1]))["plugins"]]
+specs = [p["spec"] for p in json.load(open(sys.argv[1]))["plugins"] if p.get("default") == "on"]
 cfg = {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
