@@ -82,8 +82,9 @@ npm 种子键规则（复现 `npm.ts:84`）：config 写 `pkg` → 键 `<pkg>@la
 |---|---|---|---|
 | oh-my-opencode-slim | `oh-my-opencode-slim` | on | ✅ 加载成功（2.3.0） |
 | billion-context | `billion-context` | on | ✅ 0.1.213+ 加载成功（opencode-native 入口；acp 的 v2 继任者） |
-| superpowers | `superpowers@git+https://github.com/obra/superpowers.git` | off（只打包） | 技能库，跟随 main（不钉版本，用户要求） |
-| opencode-litellm | `opencode-litellm@git+https://github.com/yuseferi/opencode-litellm.git` | off（只打包） | LiteLLM 零配置 provider（自动发现 /v1/models）；npm 名 opencode-plugin-litellm，V2 支持尚未进 npm 发布版，必须走 git 源 |
+| opencode-auto-permissions | `opencode-auto-permissions` | on | ✅ npm 注册表件 0.2.16+（零运行时依赖）；ask 档权限自动评审，评审用当前会话模型；用户要求默认启用；配置项见 config/target-readme.md |
+| superpowers | `superpowers@git+…#22f0b463…` | off（只打包） | 技能库；钉 main HEAD SHA（AGENTS.md 维护规则），mutable spec 离线会联网 update 失败 |
+| opencode-litellm | `opencode-litellm@git+…#03c40772…` | off（只打包） | LiteLLM 零配置 provider（自动发现 /v1/models）；npm 名 opencode-plugin-litellm，V2 支持尚未进 npm 发布版，必须走 git 源；钉 main HEAD SHA |
 
 默认启用 = 构建时注入配置模板（`default: "on"`）；只打包 = `seed.sh` 照常种到用户缓存，用户在 config `plugins` 里自行加 spec 即启用（零网络）。
 | opencode-acp | — | — | 已彻底删除（1.18.1 在 2.2.7 与 2.3.0 均加载失败，v1 形状；历史记录见 git log 与 analysis） |

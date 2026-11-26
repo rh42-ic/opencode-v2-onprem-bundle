@@ -49,7 +49,7 @@ opencode-<ver>-onprem-<platform>/
 └── MANIFEST.json                   # 版本/平台/来源/资产清单/sha256
 ```
 
-内置插件：默认启用 oh-my-opencode-slim、billion-context（构建时注入模板）；superpowers、opencode-litellm 只打包不默认启用（`seed.sh` 照种缓存，在 config `plugins` 加 spec 即启用，样板见 `config/opencode-litellm.example.jsonc`）。
+内置插件：默认启用 oh-my-opencode-slim、billion-context、opencode-auto-permissions（构建时注入模板）；superpowers、opencode-litellm 只打包不默认启用（`seed.sh` 照种缓存，在 config `plugins` 加 spec 即启用，样板见 `config/opencode-litellm.example.jsonc`）。
 
 ## 能力与限制（v2.3.0 实测）
 

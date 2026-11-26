@@ -25,6 +25,31 @@ source /opt/opencode/env.sh           # PATH + 关闭联网检查等环境
   - `schema/oh-my-opencode-slim.json` — omo-slim 插件配置用；其配置 `~/.config/opencode/oh-my-opencode-slim.json` 的 `"$schema"` 可写 `./schema/oh-my-opencode-slim.json`
 - v1 旧配置：手工迁移 `plugin`（v1 键）→ `plugins`（v2 键）；`provider`→`providers`、`permission`→`permissions`、`disabled_providers`→`policies`、`autoupdate`→`update`；`opencode-acp@…` 在 v2 加载失败会阻塞 model.list，请移除。
 
+## 权限自动评审（opencode-auto-permissions，默认启用）
+
+模板的 permissions 20 条规则里所有 `ask` 档请求会交给该插件自动评审：它用**当前会话的模型**
+（无需额外配置评审模型）结合上下文裁决，裁决倾向"合理服务任务即放行"，绝不向用户弹窗；
+评审失败/超时按 fail-closed 拒绝并告知 agent 更安全的替代方案。`allow`/`deny` 规则到不了它，
+`deny` 永远不被覆盖。零配置即用；可选配置（替换 plugins 数组里的包名为元组）：
+
+```jsonc
+"plugins": [
+  "oh-my-opencode-slim", "billion-context",
+  ["opencode-auto-permissions", {
+    "model": "litellm/<model-id>",   // 专用评审模型（默认=请求方会话模型）
+    "variant": "low",                // 评审用低档推理，减少延迟
+    "sessionApprovals": true,        // 会话内复用窄模式批准（false=逐次）
+    "timeoutMs": 30000,              // 单次评审超时；本地慢模型建议调大（100–300000）
+    "userMessageCount": 8,           // 送审上下文的最近用户消息数（1–20）
+    "shadow": false,                 // true=只记录裁决不回复（观察期）
+    "debug": false                   // true=裁决日志 → ~/.local/state/opencode/auto-permissions/decisions.jsonl
+  }]
+]
+```
+
+要点：先 `shadow: true` 观察一段再放开；避免全 `ask` 配置（每次工具调用都加评审延迟）；
+评审模型选快而稳、能跟 JSON 指令的即可，深度推理反而慢。
+
 ## 本地 LLM
 
 - Ollama（127.0.0.1:11434）/ vLLM（127.0.0.1:8000）：**零配置**，启动后 ~30s 自动发现。

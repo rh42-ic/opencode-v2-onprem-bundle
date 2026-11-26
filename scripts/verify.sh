@@ -197,9 +197,10 @@ fi
 
 # A8: vendored 插件离线加载（前置已验缓存落地；此处核对数量与 config 注入）
 N_VENDORED="$(ls "$TMP/opt/assets/npm" | wc -l)"
-[ "$N_VENDORED" -ge 4 ] && pass "A8 目录覆盖 $N_VENDORED 个 vendored 插件" || fail "A8 目录数量异常: $N_VENDORED"
+[ "$N_VENDORED" -ge 5 ] && pass "A8 目录覆盖 $N_VENDORED 个 vendored 插件" || fail "A8 目录数量异常: $N_VENDORED"
 grep -q "oh-my-opencode-slim" "$HOME/.config/opencode/opencode.jsonc" 2>/dev/null \
   && grep -q "billion-context" "$HOME/.config/opencode/opencode.jsonc" \
+  && grep -q "opencode-auto-permissions" "$HOME/.config/opencode/opencode.jsonc" \
   && pass "A8 config 含默认启用插件（模板注入）" || fail "A8 config 缺默认启用插件"
 grep -q "opencode-litellm@git\|superpowers@git" "$HOME/.config/opencode/opencode.jsonc" \
   && fail "A8 非 default 插件不应注入 config" || pass "A8 仅默认启用插件注入 config"
